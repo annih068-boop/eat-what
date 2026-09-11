@@ -110,3 +110,5 @@ footer { border-top-color: var(--line); }
 	.history-entry { gap: 12px; }
 	.history-food { padding-left: 12px; }
 }
+.edit-dish { position: absolute; right: 48px; bottom: 59px; display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; color: var(--muted); background: #eee8dd; font-size: 15px; line-height: 1; }
+.edit-dish:hover { color: white; background: var(--green); }

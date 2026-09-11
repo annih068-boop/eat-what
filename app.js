@@ -19,9 +19,12 @@ const state = {
   meal: '午饭',
   user: '',
   userId: '',
+  chefName: '我的厨房',
   session: null,
   history: [],
-  authMode: 'login'
+  authMode: 'login',
+  editingDishId: null,
+  sharedDishes: []
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -40,6 +43,7 @@ function renderDishes() {
     <article class="dish-card">
       <img class="dish-image" src="${dish.image}" alt="${dish.name}">
       <div class="dish-info"><p class="dish-name">${dish.name}</p><span class="dish-meta">${dish.category} · ${dish.time}</span></div>
+      <button class="edit-dish" data-edit="${dish.id}" aria-label="编辑${dish.name}">✎</button>
       <button class="add-dish" data-add="${dish.id}" aria-label="添加${dish.name}">＋</button>
     </article>`).join('');
 }
@@ -58,11 +62,18 @@ function closeModal(id) { $(`#${id}`).hidden = true; }
 async function loadUserData(session) {
   state.session = session;
   state.userId = session.user.id;
-  const profileResult = await supabaseClient.from('profiles').select('username').eq('id', state.userId).maybeSingle();
+  const profileResult = await supabaseClient.from('profiles').select('username, chef_name').eq('id', state.userId).maybeSingle();
   state.user = profileResult.data?.username || session.user.email.split('@')[0];
-  const dishesResult = await supabaseClient.from('dishes').select('*').eq('user_id', state.userId).order('created_at', { ascending: false });
+  state.chefName = profileResult.data?.chef_name || `${state.user}的厨房`;
+  let dishesResult = await supabaseClient.from('dishes').select('*').eq('user_id', state.userId).order('created_at', { ascending: false });
   if (dishesResult.error) throw dishesResult.error;
+  if (dishesResult.data.length === 0) {
+    const seedDishes = defaultDishes.map((dish) => ({ user_id: state.userId, name: dish.name, category: dish.category, cook_time: dish.time, image_url: dish.image }));
+    dishesResult = await supabaseClient.from('dishes').insert(seedDishes).select('*');
+    if (dishesResult.error) throw dishesResult.error;
+  }
   state.dishes = dishesResult.data.map((dish) => ({ id: dish.id, name: dish.name, category: dish.category, time: dish.cook_time, image: dish.image_url }));
+  if (state.sharedDishes.length) state.dishes = [...state.sharedDishes, ...state.dishes];
   const plansResult = await supabaseClient.from('meal_plans').select('id, meal_date, meal_type').eq('user_id', state.userId).gte('meal_date', new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)).order('meal_date', { ascending: false });
   if (plansResult.error) throw plansResult.error;
   state.history = [];
@@ -89,6 +100,12 @@ function renderHistory() {
 async function saveOrder() {
   if (!state.userId) return;
   const mealDate = tomorrow.toISOString().slice(0, 10);
+  for (const dish of state.cart.filter((item) => item.source === 'shared')) {
+    const copied = await supabaseClient.from('dishes').insert({ user_id: state.userId, name: dish.name, category: dish.category, cook_time: dish.time, image_url: dish.image }).select().single();
+    if (copied.error) throw copied.error;
+    dish.id = copied.data.id;
+    dish.source = 'owned';
+  }
   const planResult = await supabaseClient.from('meal_plans').upsert({ user_id: state.userId, meal_date: mealDate, meal_type: state.meal }, { onConflict: 'user_id,meal_date,meal_type' }).select('id').single();
   if (planResult.error) throw planResult.error;
   const removeResult = await supabaseClient.from('meal_plan_dishes').delete().eq('meal_plan_id', planResult.data.id);
@@ -102,7 +119,7 @@ async function saveOrder() {
 function encodeShareData(data) { return btoa(unescape(encodeURIComponent(JSON.stringify(data)))); }
 function decodeShareData(value) { return JSON.parse(decodeURIComponent(escape(atob(value)))); }
 function buildShareUrl() {
-  const payload = { dishes: state.dishes, cart: state.cart, meal: state.meal };
+  const payload = { dishes: state.dishes, cart: state.cart, meal: state.meal, chefName: state.chefName };
   return `${window.location.href.split('#')[0]}#share=${encodeShareData(payload)}`;
 }
 
@@ -111,9 +128,10 @@ function importSharedData() {
   if (!value) return;
   try {
     const shared = decodeShareData(value);
-    if (Array.isArray(shared.dishes)) state.dishes = shared.dishes;
-    if (Array.isArray(shared.cart)) state.cart = shared.cart;
+    if (Array.isArray(shared.dishes)) state.sharedDishes = shared.dishes.map((dish) => ({ ...dish, id: `shared-${dish.id}`, source: 'shared' }));
+    if (Array.isArray(shared.cart)) state.cart = shared.cart.map((dish) => ({ ...dish, id: `shared-${dish.id}`, source: 'shared' }));
     if (shared.meal) state.meal = shared.meal;
+    if (shared.chefName) state.chefName = shared.chefName;
   } catch (error) { window.history.replaceState({}, '', window.location.pathname); }
 }
 
@@ -154,7 +172,27 @@ $('.meal-switch').addEventListener('click', (event) => {
   $('#selectedMealLabel').textContent = state.meal;
 });
 
+function openDishEditor(dish = null) {
+  state.editingDishId = dish?.id || null;
+  $('#dishModalEyebrow').textContent = dish ? 'EDIT YOUR DISH' : 'ADD A DISH';
+  $('#dishModalTitle').textContent = dish ? '把这道菜改得更好' : '把拿手菜放上来';
+  $('#dishModalIntro').textContent = dish ? '可以改名字，也可以换一张更好看的图片。' : '让下一顿饭从你的菜单开始。';
+  $('#dishSubmit').innerHTML = dish ? '保存修改 <span>→</span>' : '加入我的菜单 <span>→</span>';
+  $('#dishName').value = dish?.name || '';
+  $('#dishCategory').value = dish?.category || '家常菜';
+  $('#uploadPreview').style.background = dish?.image ? `center / cover url('${dish.image}')` : '';
+  $('#uploadPreview').textContent = dish?.image ? '' : '＋';
+  $('#dishImageHint').textContent = dish ? '点击更换图片（可选）' : '点击上传菜品图片';
+  showModal('uploadModal');
+}
+
 $('#dishGrid').addEventListener('click', (event) => {
+  const editButton = event.target.closest('[data-edit]');
+  if (editButton) {
+    const dish = state.dishes.find((item) => String(item.id) === editButton.dataset.edit);
+    if (dish) openDishEditor(dish);
+    return;
+  }
   const button = event.target.closest('[data-add]');
   if (!button) return;
   const dish = state.dishes.find((item) => String(item.id) === button.dataset.add);
@@ -169,8 +207,14 @@ $('#cartItems').addEventListener('click', (event) => {
   renderCart();
 });
 
-$('#uploadButton').addEventListener('click', () => { if (!state.user) { showModal('loginModal'); return; } showModal('uploadModal'); });
+$('#uploadButton').addEventListener('click', () => { if (!state.user) { showModal('loginModal'); return; } openDishEditor(); });
 $('#loginButton').addEventListener('click', () => showModal('loginModal'));
+$('#settingsButton').addEventListener('click', () => {
+  if (!state.userId) { showModal('loginModal'); return; }
+  $('#chefName').value = state.chefName;
+  $('#settingsMessage').textContent = '';
+  showModal('settingsModal');
+});
 $('#historyButton').addEventListener('click', () => { renderHistory(); showModal('historyModal'); });
 $('#shareButton').addEventListener('click', () => { $('#shareUrl').value = buildShareUrl(); $('#shareMessage').textContent = '这个链接会带上当前菜单和明日计划。'; showModal('shareModal'); });
 $('#cartButton').addEventListener('click', () => $('#orderPanel').scrollIntoView({ behavior: 'smooth', block: 'center' }));
@@ -219,10 +263,13 @@ $('#uploadForm').addEventListener('submit', async (event) => {
       if (uploadResult.error) throw uploadResult.error;
       image = supabaseClient.storage.from('dish-images').getPublicUrl(path).data.publicUrl;
     }
-    const dishResult = await supabaseClient.from('dishes').insert({ user_id: state.userId, name: $('#dishName').value.trim(), category: $('#dishCategory').value, cook_time: '自定义', image_url: image }).select().single();
+    const dishData = { name: $('#dishName').value.trim(), category: $('#dishCategory').value, cook_time: '自定义', image_url: image };
+    const dishResult = state.editingDishId
+      ? await supabaseClient.from('dishes').update(dishData).eq('id', state.editingDishId).eq('user_id', state.userId).select().single()
+      : await supabaseClient.from('dishes').insert({ ...dishData, user_id: state.userId }).select().single();
     if (dishResult.error) throw dishResult.error;
     await loadUserData(state.session);
-    closeModal('uploadModal'); event.target.reset(); $('#uploadPreview').style.background = ''; $('#uploadPreview').textContent = '＋';
+    closeModal('uploadModal'); event.target.reset(); state.editingDishId = null; $('#uploadPreview').style.background = ''; $('#uploadPreview').textContent = '＋';
   } catch (error) { $('#authMessage').textContent = `上传失败：${error.message}`; }
 });
 
@@ -267,6 +314,17 @@ $('#copyShareButton').addEventListener('click', async () => {
   catch (error) { $('#shareUrl').select(); $('#shareMessage').textContent = '请手动复制上面的链接。'; }
 });
 
+$('#settingsForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const chefName = $('#chefName').value.trim();
+  if (!chefName || !state.userId) return;
+  const result = await supabaseClient.from('profiles').update({ chef_name: chefName }).eq('id', state.userId);
+  if (result.error) { $('#settingsMessage').textContent = `保存失败：${result.error.message}`; return; }
+  state.chefName = chefName;
+  $('#settingsMessage').textContent = '已保存。';
+  closeModal('settingsModal');
+});
+
 function drawRecipe() {
   const canvas = $('#recipeCanvas');
   const ctx = canvas.getContext('2d');
@@ -281,7 +339,7 @@ function drawRecipe() {
   ctx.fillStyle = color.red; ctx.font = `700 ${21 * scale}px Noto Sans SC`; ctx.fillText('明天吃啥好', 78 * scale, 105 * scale);
   ctx.fillStyle = color.ink; ctx.font = `700 ${76 * scale}px Noto Sans SC`; ctx.fillText('明日食谱', 74 * scale, 215 * scale);
   ctx.fillStyle = color.red; ctx.font = `500 ${25 * scale}px Noto Sans SC`; ctx.fillText(`${month}月${day}日  ·  星期${week}`, 80 * scale, 275 * scale);
-  ctx.fillStyle = color.muted; ctx.font = `500 ${20 * scale}px Noto Sans SC`; ctx.fillText(`${state.meal}  |  ${state.user ? `${state.user}的厨房` : '一起好好吃饭'}`, 80 * scale, 315 * scale);
+  ctx.fillStyle = color.muted; ctx.font = `500 ${20 * scale}px Noto Sans SC`; ctx.fillText(`${state.meal}  |  ${state.chefName || '一起好好吃饭'}`, 80 * scale, 315 * scale);
   ctx.strokeStyle = '#dfd5c5'; ctx.lineWidth = 2 * scale; ctx.beginPath(); ctx.moveTo(80 * scale, 362 * scale); ctx.lineTo(920 * scale, 362 * scale); ctx.stroke();
   ctx.fillStyle = color.sage; ctx.font = `700 ${15 * scale}px Noto Sans SC`; ctx.fillText('今晚的选择', 80 * scale, 415 * scale);
   state.cart.forEach((dish, index) => {

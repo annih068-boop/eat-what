@@ -4,8 +4,11 @@
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text not null unique,
+  chef_name text not null default '我的厨房',
   created_at timestamptz not null default now()
 );
+
+alter table public.profiles add column if not exists chef_name text not null default '我的厨房';
 
 -- 用户名规则由前端校验：允许中文、英文、数字和短横线。
 
