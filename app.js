@@ -1,3 +1,6 @@
+const APP_VERSION = '2026-09-11-auth-v3';
+console.info(`[明天吃啥好] app.js ${APP_VERSION}`);
+
 const defaultDishes = [
   { id: 1, name: '番茄炒蛋', category: '家常菜', time: '20 分钟', image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=700&q=85' },
   { id: 2, name: '香煎鸡腿', category: '快手菜', time: '35 分钟', image: 'https://images.unsplash.com/photo-1532550907401-a500c9a57435?auto=format&fit=crop&w=700&q=85' },
@@ -246,7 +249,10 @@ $('#loginForm').addEventListener('submit', async (event) => {
       const profileResult = await supabaseClient.from('profiles').insert({ id: result.data.user.id, username });
       if (profileResult.error) throw profileResult.error;
     }
-    if (!result.data.session) { $('#authMessage').textContent = '注册成功，请先查收邮箱并完成验证。'; return; }
+    if (!result.data.session) {
+      $('#authMessage').textContent = '注册请求已提交，但 Supabase 仍要求邮箱确认。请在 Authentication → Providers → Email 中关闭 Confirm email，然后重新部署。';
+      return;
+    }
     await loadUserData(result.data.session);
     closeModal('loginModal'); event.target.reset(); $('#authMessage').textContent = '';
   } catch (error) {
