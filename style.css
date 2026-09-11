@@ -112,3 +112,5 @@ footer { border-top-color: var(--line); }
 }
 .edit-dish { position: absolute; right: 48px; bottom: 59px; display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; color: var(--muted); background: #eee8dd; font-size: 15px; line-height: 1; }
 .edit-dish:hover { color: white; background: var(--green); }
+.delete-dish { position: absolute; right: 78px; bottom: 59px; display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; color: var(--muted); background: #eee8dd; font-size: 17px; line-height: 1; }
+.delete-dish:hover { color: white; background: var(--coral); }

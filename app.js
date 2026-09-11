@@ -39,11 +39,19 @@ $('#selectedDateLabel').textContent = `${month}月${day}日`;
 
 function renderDishes() {
   const list = state.category === '全部' ? state.dishes : state.dishes.filter((dish) => dish.category === state.category);
+  const counts = state.dishes.reduce((result, dish) => {
+    result[dish.category] = (result[dish.category] || 0) + 1;
+    return result;
+  }, {});
+  document.querySelectorAll('#categoryTabs .category').forEach((button) => {
+    const count = button.dataset.category === '全部' ? state.dishes.length : counts[button.dataset.category] || 0;
+    button.querySelector('.category-count').textContent = count;
+  });
   $('#dishGrid').innerHTML = list.map((dish) => `
     <article class="dish-card">
       <img class="dish-image" src="${dish.image}" alt="${dish.name}">
       <div class="dish-info"><p class="dish-name">${dish.name}</p><span class="dish-meta">${dish.category} · ${dish.time}</span></div>
-      <button class="edit-dish" data-edit="${dish.id}" aria-label="编辑${dish.name}">✎</button>
+      ${dish.source === 'shared' ? '' : `<button class="edit-dish" data-edit="${dish.id}" aria-label="编辑${dish.name}">✎</button><button class="delete-dish" data-delete="${dish.id}" aria-label="删除${dish.name}">×</button>`}
       <button class="add-dish" data-add="${dish.id}" aria-label="添加${dish.name}">＋</button>
     </article>`).join('');
 }
@@ -192,6 +200,7 @@ function openDishEditor(dish = null) {
   $('#dishModalIntro').textContent = dish ? '可以改名字，也可以换一张更好看的图片。' : '让下一顿饭从你的菜单开始。';
   $('#dishSubmit').innerHTML = dish ? '保存修改 <span>→</span>' : '加入我的菜单 <span>→</span>';
   $('#dishName').value = dish?.name || '';
+  $('#dishChefName').value = state.chefName || '';
   $('#dishCategory').value = dish?.category || '家常菜';
   $('#uploadPreview').style.background = dish?.image ? `center / cover url('${dish.image}')` : '';
   $('#uploadPreview').textContent = dish?.image ? '' : '＋';
@@ -200,6 +209,12 @@ function openDishEditor(dish = null) {
 }
 
 $('#dishGrid').addEventListener('click', (event) => {
+  const deleteButton = event.target.closest('[data-delete]');
+  if (deleteButton) {
+    const dish = state.dishes.find((item) => String(item.id) === deleteButton.dataset.delete);
+    if (dish && dish.source !== 'shared' && window.confirm(`确定删除“${dish.name}”吗？`)) deleteDish(dish);
+    return;
+  }
   const editButton = event.target.closest('[data-edit]');
   if (editButton) {
     const dish = state.dishes.find((item) => String(item.id) === editButton.dataset.edit);
@@ -212,6 +227,15 @@ $('#dishGrid').addEventListener('click', (event) => {
   if (dish && !state.cart.some((item) => String(item.id) === String(dish.id))) state.cart.push(dish);
   renderCart();
 });
+
+async function deleteDish(dish) {
+  if (!state.userId || !supabaseClient) return;
+  const result = await supabaseClient.from('dishes').delete().eq('id', dish.id).eq('user_id', state.userId);
+  if (result.error) { window.alert(`删除失败：${result.error.message}`); return; }
+  state.cart = state.cart.filter((item) => String(item.id) !== String(dish.id));
+  await loadUserData(state.session);
+  renderCart();
+}
 
 $('#cartItems').addEventListener('click', (event) => {
   const button = event.target.closest('[data-remove]');
@@ -290,6 +314,12 @@ $('#uploadForm').addEventListener('submit', async (event) => {
       ? await supabaseClient.from('dishes').update(dishData).eq('id', state.editingDishId).eq('user_id', state.userId).select().single()
       : await supabaseClient.from('dishes').insert({ ...dishData, user_id: state.userId }).select().single();
     if (dishResult.error) throw dishResult.error;
+    const chefName = $('#dishChefName').value.trim();
+    if (chefName && chefName !== state.chefName) {
+      const profileResult = await supabaseClient.from('profiles').update({ chef_name: chefName }).eq('id', state.userId);
+      if (profileResult.error) throw profileResult.error;
+      state.chefName = chefName;
+    }
     await loadUserData(state.session);
     closeModal('uploadModal'); event.target.reset(); state.editingDishId = null; $('#uploadPreview').style.background = ''; $('#uploadPreview').textContent = '＋';
   } catch (error) { $('#authMessage').textContent = `上传失败：${error.message}`; }
