@@ -2,12 +2,12 @@ const APP_VERSION = '2026-09-11-auth-v3';
 console.info(`[明天吃啥好] app.js ${APP_VERSION}`);
 
 const defaultDishes = [
-  { id: 1, name: '番茄炒蛋', category: '家常菜', time: '20 分钟', image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=700&q=85' },
-  { id: 2, name: '香煎鸡腿', category: '快手菜', time: '35 分钟', image: 'https://images.unsplash.com/photo-1532550907401-a500c9a57435?auto=format&fit=crop&w=700&q=85' },
-  { id: 3, name: '玉米排骨汤', category: '汤羹', time: '60 分钟', image: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?auto=format&fit=crop&w=700&q=85' },
-  { id: 4, name: '蒜蓉西兰花', category: '快手菜', time: '15 分钟', image: 'https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?auto=format&fit=crop&w=700&q=85' },
-  { id: 5, name: '葱油拌面', category: '家常菜', time: '15 分钟', image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=700&q=85' },
-  { id: 6, name: '菌菇豆腐煲', category: '汤羹', time: '30 分钟', image: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=700&q=85' }
+  { id: 1, name: '番茄炒蛋', category: '家常菜', time: '20 分钟', chefName: '我的厨房', image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=700&q=85' },
+  { id: 2, name: '香煎鸡腿', category: '快手菜', time: '35 分钟', chefName: '我的厨房', image: 'https://images.unsplash.com/photo-1532550907401-a500c9a57435?auto=format&fit=crop&w=700&q=85' },
+  { id: 3, name: '玉米排骨汤', category: '汤羹', time: '60 分钟', chefName: '我的厨房', image: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?auto=format&fit=crop&w=700&q=85' },
+  { id: 4, name: '蒜蓉西兰花', category: '快手菜', time: '15 分钟', chefName: '我的厨房', image: 'https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?auto=format&fit=crop&w=700&q=85' },
+  { id: 5, name: '葱油拌面', category: '家常菜', time: '15 分钟', chefName: '我的厨房', image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=700&q=85' },
+  { id: 6, name: '菌菇豆腐煲', category: '汤羹', time: '30 分钟', chefName: '我的厨房', image: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=700&q=85' }
 ];
 
 const supabaseConfigured = window.SUPABASE_CONFIG?.url?.startsWith('https://') && window.SUPABASE_CONFIG?.anonKey && !window.SUPABASE_CONFIG.anonKey.includes('粘贴');
@@ -50,7 +50,7 @@ function renderDishes() {
   $('#dishGrid').innerHTML = list.map((dish) => `
     <article class="dish-card">
       <img class="dish-image" src="${dish.image}" alt="${dish.name}">
-      <div class="dish-info"><p class="dish-name">${dish.name}</p><span class="dish-meta">${dish.category} · ${dish.time}</span></div>
+      <div class="dish-info"><p class="dish-name">${dish.name}</p><span class="dish-meta">${dish.category} · ${dish.time}</span><span class="dish-chef">厨师：${dish.chefName || '我的厨房'}</span></div>
       ${dish.source === 'shared' ? '' : `<button class="edit-dish" data-edit="${dish.id}" aria-label="编辑${dish.name}">✎</button><button class="delete-dish" data-delete="${dish.id}" aria-label="删除${dish.name}">×</button>`}
       <button class="add-dish" data-add="${dish.id}" aria-label="添加${dish.name}">＋</button>
     </article>`).join('');
@@ -76,11 +76,11 @@ async function loadUserData(session) {
   let dishesResult = await supabaseClient.from('dishes').select('*').eq('user_id', state.userId).order('created_at', { ascending: false });
   if (dishesResult.error) throw dishesResult.error;
   if (dishesResult.data.length === 0) {
-    const seedDishes = defaultDishes.map((dish) => ({ user_id: state.userId, name: dish.name, category: dish.category, cook_time: dish.time, image_url: dish.image }));
+    const seedDishes = defaultDishes.map((dish) => ({ user_id: state.userId, name: dish.name, category: dish.category, cook_time: dish.time, chef_name: state.chefName, image_url: dish.image }));
     dishesResult = await supabaseClient.from('dishes').insert(seedDishes).select('*');
     if (dishesResult.error) throw dishesResult.error;
   }
-  state.dishes = dishesResult.data.map((dish) => ({ id: dish.id, name: dish.name, category: dish.category, time: dish.cook_time, image: dish.image_url }));
+  state.dishes = dishesResult.data.map((dish) => ({ id: dish.id, name: dish.name, category: dish.category, time: dish.cook_time, chefName: dish.chef_name || state.chefName, image: dish.image_url }));
   if (state.sharedDishes.length) state.dishes = [...state.sharedDishes, ...state.dishes];
   const plansResult = await supabaseClient.from('meal_plans').select('id, meal_date, meal_type').eq('user_id', state.userId).gte('meal_date', new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)).order('meal_date', { ascending: false });
   if (plansResult.error) throw plansResult.error;
@@ -109,7 +109,7 @@ async function saveOrder() {
   if (!state.userId) return;
   const mealDate = tomorrow.toISOString().slice(0, 10);
   for (const dish of state.cart.filter((item) => item.source === 'shared')) {
-    const copied = await supabaseClient.from('dishes').insert({ user_id: state.userId, name: dish.name, category: dish.category, cook_time: dish.time, image_url: dish.image }).select().single();
+    const copied = await supabaseClient.from('dishes').insert({ user_id: state.userId, name: dish.name, category: dish.category, cook_time: dish.time, chef_name: dish.chefName || state.chefName, image_url: dish.image }).select().single();
     if (copied.error) throw copied.error;
     dish.id = copied.data.id;
     dish.source = 'owned';
@@ -201,6 +201,7 @@ function openDishEditor(dish = null) {
   $('#dishSubmit').innerHTML = dish ? '保存修改 <span>→</span>' : '加入我的菜单 <span>→</span>';
   $('#dishName').value = dish?.name || '';
   $('#dishChefName').value = state.chefName || '';
+  $('#dishTime').value = dish?.time || '';
   $('#dishCategory').value = dish?.category || '家常菜';
   $('#uploadPreview').style.background = dish?.image ? `center / cover url('${dish.image}')` : '';
   $('#uploadPreview').textContent = dish?.image ? '' : '＋';
@@ -309,7 +310,7 @@ $('#uploadForm').addEventListener('submit', async (event) => {
       if (uploadResult.error) throw uploadResult.error;
       image = supabaseClient.storage.from('dish-images').getPublicUrl(path).data.publicUrl;
     }
-    const dishData = { name: $('#dishName').value.trim(), category: $('#dishCategory').value, cook_time: '自定义', image_url: image };
+    const dishData = { name: $('#dishName').value.trim(), category: $('#dishCategory').value, cook_time: $('#dishTime').value.trim(), chef_name: $('#dishChefName').value.trim(), image_url: image };
     const dishResult = state.editingDishId
       ? await supabaseClient.from('dishes').update(dishData).eq('id', state.editingDishId).eq('user_id', state.userId).select().single()
       : await supabaseClient.from('dishes').insert({ ...dishData, user_id: state.userId }).select().single();

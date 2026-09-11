@@ -18,9 +18,12 @@ create table if not exists public.dishes (
   name text not null,
   category text not null,
   cook_time text not null default '自定义',
+  chef_name text not null default '我的厨房',
   image_url text,
   created_at timestamptz not null default now()
 );
+
+alter table public.dishes add column if not exists chef_name text not null default '我的厨房';
 
 create table if not exists public.meal_plans (
   id uuid primary key default gen_random_uuid(),
