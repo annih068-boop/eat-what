@@ -7,6 +7,8 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
+-- 用户名规则由前端校验：允许中文、英文、数字和短横线。
+
 create table if not exists public.dishes (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,

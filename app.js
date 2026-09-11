@@ -189,7 +189,7 @@ function usernameEmail(username) {
 }
 
 function validUsername(username) {
-  return /^[A-Za-z\u4e00-\u9fff-]+$/.test(username);
+  return /^[A-Za-z0-9\u4e00-\u9fff-]+$/.test(username);
 }
 
 function validPassword(password) {
@@ -228,7 +228,7 @@ $('#loginForm').addEventListener('submit', async (event) => {
   if (!supabaseClient) { $('#authMessage').textContent = 'Supabase 配置还没有加载。'; return; }
   const username = $('#username').value.trim();
   const password = $('#password').value;
-  if (!validUsername(username)) { $('#authMessage').textContent = '用户名只能包含中文、英文和短横线。'; return; }
+  if (!validUsername(username)) { $('#authMessage').textContent = '用户名只能包含中文、英文、数字和短横线。'; return; }
   if (!validPassword(password)) { $('#authMessage').textContent = '密码需为 6-20 位，并同时包含大写字母、小写字母和数字。'; return; }
   const email = usernameEmail(username);
   $('#authMessage').textContent = '正在处理…';
