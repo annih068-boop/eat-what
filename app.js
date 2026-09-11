@@ -231,7 +231,13 @@ $('#settingsButton').addEventListener('click', () => {
 $('#historyButton').addEventListener('click', () => { renderHistory(); showModal('historyModal'); });
 $('#shareButton').addEventListener('click', async () => {
   try { $('#shareUrl').value = await buildShareUrl(); $('#shareMessage').textContent = '短链接已生成，有效期 30 天。'; showModal('shareModal'); }
-  catch (error) { $('#shareMessage').textContent = `生成失败：${error.message}`; showModal('shareModal'); }
+  catch (error) {
+    const message = error.message.includes('row-level security')
+      ? '分享权限还没有在 Supabase 生效，请执行最新 supabase-schema.sql 后再试。'
+      : error.message;
+    $('#shareMessage').textContent = `生成失败：${message}`;
+    showModal('shareModal');
+  }
 });
 $('#cartButton').addEventListener('click', () => $('#orderPanel').scrollIntoView({ behavior: 'smooth', block: 'center' }));
 document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.close)));

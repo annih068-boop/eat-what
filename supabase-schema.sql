@@ -77,10 +77,12 @@ create policy "users can remove their plan dishes" on public.meal_plan_dishes fo
   exists (select 1 from public.meal_plans p where p.id = meal_plan_id and p.user_id = auth.uid())
 );
 
+drop policy if exists "anyone can read active share links" on public.share_links;
+drop policy if exists "users can create their share links" on public.share_links;
 create policy "anyone can read active share links" on public.share_links
-for select using (expires_at > now());
+for select to anon, authenticated using (expires_at > now());
 create policy "users can create their share links" on public.share_links
-for insert to authenticated with check (auth.uid() = owner_id);
+for insert to authenticated with check ((select auth.uid()) = owner_id);
 
 insert into storage.buckets (id, name, public)
 values ('dish-images', 'dish-images', true)
