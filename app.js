@@ -1,14 +1,7 @@
 const APP_VERSION = '2026-09-11-auth-v3';
 console.info(`[明天吃啥好] app.js ${APP_VERSION}`);
 
-const defaultDishes = [
-  { id: 1, name: '番茄炒蛋', category: '家常菜', time: '20 分钟', chefName: '我的厨房', image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=700&q=85' },
-  { id: 2, name: '香煎鸡腿', category: '快手菜', time: '35 分钟', chefName: '我的厨房', image: 'https://images.unsplash.com/photo-1532550907401-a500c9a57435?auto=format&fit=crop&w=700&q=85' },
-  { id: 3, name: '玉米排骨汤', category: '汤羹', time: '60 分钟', chefName: '我的厨房', image: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?auto=format&fit=crop&w=700&q=85' },
-  { id: 4, name: '蒜蓉西兰花', category: '快手菜', time: '15 分钟', chefName: '我的厨房', image: 'https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?auto=format&fit=crop&w=700&q=85' },
-  { id: 5, name: '葱油拌面', category: '家常菜', time: '15 分钟', chefName: '我的厨房', image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=700&q=85' },
-  { id: 6, name: '菌菇豆腐煲', category: '汤羹', time: '30 分钟', chefName: '我的厨房', image: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=700&q=85' }
-];
+const defaultDishes = [];
 
 const supabaseConfigured = window.SUPABASE_CONFIG?.url?.startsWith('https://') && window.SUPABASE_CONFIG?.anonKey && !window.SUPABASE_CONFIG.anonKey.includes('粘贴');
 const supabaseClient = supabaseConfigured ? window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey) : null;
@@ -47,6 +40,10 @@ function renderDishes() {
     const count = button.dataset.category === '全部' ? state.dishes.length : counts[button.dataset.category] || 0;
     button.querySelector('.category-count').textContent = count;
   });
+  if (!list.length) {
+    $('#dishGrid').innerHTML = '<div class="dish-empty"><span>＋</span><strong>快添加你的菜吧</strong><small>把你会做的菜放上来，明天就有得选了。</small></div>';
+    return;
+  }
   $('#dishGrid').innerHTML = list.map((dish) => `
     <article class="dish-card">
       <img class="dish-image" src="${dish.image}" alt="${dish.name}">
@@ -75,11 +72,6 @@ async function loadUserData(session) {
   state.chefName = profileResult.data?.chef_name || `${state.user}的厨房`;
   let dishesResult = await supabaseClient.from('dishes').select('*').eq('user_id', state.userId).order('created_at', { ascending: false });
   if (dishesResult.error) throw dishesResult.error;
-  if (dishesResult.data.length === 0) {
-    const seedDishes = defaultDishes.map((dish) => ({ user_id: state.userId, name: dish.name, category: dish.category, cook_time: dish.time, chef_name: state.chefName, image_url: dish.image }));
-    dishesResult = await supabaseClient.from('dishes').insert(seedDishes).select('*');
-    if (dishesResult.error) throw dishesResult.error;
-  }
   state.dishes = dishesResult.data.map((dish) => ({ id: dish.id, name: dish.name, category: dish.category, time: dish.cook_time, chefName: dish.chef_name || state.chefName, image: dish.image_url }));
   if (state.sharedDishes.length) state.dishes = [...state.sharedDishes, ...state.dishes];
   const plansResult = await supabaseClient.from('meal_plans').select('id, meal_date, meal_type').eq('user_id', state.userId).gte('meal_date', new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)).order('meal_date', { ascending: false });
