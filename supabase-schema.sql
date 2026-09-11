@@ -39,6 +39,7 @@ alter table public.meal_plans enable row level security;
 alter table public.meal_plan_dishes enable row level security;
 
 create policy "profiles are readable by owner" on public.profiles for select using (auth.uid() = id);
+create policy "usernames can be checked during registration" on public.profiles for select using (true);
 create policy "users can create their profile" on public.profiles for insert with check (auth.uid() = id);
 create policy "users can update their profile" on public.profiles for update using (auth.uid() = id);
 

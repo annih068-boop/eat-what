@@ -7,15 +7,16 @@ const defaultDishes = [
   { id: 6, name: '菌菇豆腐煲', category: '汤羹', time: '30 分钟', image: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=700&q=85' }
 ];
 
-const users = JSON.parse(localStorage.getItem('tomorrow-users') || '{}');
-const savedUser = localStorage.getItem('tomorrow-current-user') || '';
-const legacyDishes = JSON.parse(localStorage.getItem('tomorrow-dishes') || 'null');
+const supabaseConfigured = window.SUPABASE_CONFIG?.url?.startsWith('https://') && window.SUPABASE_CONFIG?.anonKey && !window.SUPABASE_CONFIG.anonKey.includes('粘贴');
+const supabaseClient = supabaseConfigured ? window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey) : null;
 const state = {
   dishes: defaultDishes,
   cart: [],
   category: '全部',
   meal: '午饭',
-  user: savedUser,
+  user: '',
+  userId: '',
+  session: null,
   history: [],
   authMode: 'login'
 };
@@ -51,24 +52,25 @@ function renderCart() {
 
 function showModal(id) { $(`#${id}`).hidden = false; }
 function closeModal(id) { $(`#${id}`).hidden = true; }
-function saveUsers() { localStorage.setItem('tomorrow-users', JSON.stringify(users)); }
-function currentUserData() { return state.user ? users[state.user] : null; }
-function saveCurrentUser() {
-  if (!state.user) return;
-  users[state.user] = { ...users[state.user], dishes: state.dishes, history: state.history };
-  saveUsers();
-}
-function loadUser(username) {
-  state.user = username;
-  const profile = users[username];
-  state.dishes = profile?.dishes || legacyDishes || defaultDishes;
-  state.history = profile?.history || [];
-  localStorage.setItem('tomorrow-current-user', username);
-  $('#loginLabel').textContent = username;
+async function loadUserData(session) {
+  state.session = session;
+  state.userId = session.user.id;
+  const profileResult = await supabaseClient.from('profiles').select('username').eq('id', state.userId).maybeSingle();
+  state.user = profileResult.data?.username || session.user.email.split('@')[0];
+  const dishesResult = await supabaseClient.from('dishes').select('*').eq('user_id', state.userId).order('created_at', { ascending: false });
+  if (dishesResult.error) throw dishesResult.error;
+  state.dishes = dishesResult.data.map((dish) => ({ id: dish.id, name: dish.name, category: dish.category, time: dish.cook_time, image: dish.image_url }));
+  const plansResult = await supabaseClient.from('meal_plans').select('id, meal_date, meal_type').eq('user_id', state.userId).gte('meal_date', new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)).order('meal_date', { ascending: false });
+  if (plansResult.error) throw plansResult.error;
+  state.history = [];
+  for (const plan of plansResult.data) {
+    const links = await supabaseClient.from('meal_plan_dishes').select('sort_order, dishes(name)').eq('meal_plan_id', plan.id).order('sort_order');
+    state.history.push({ key: `${plan.meal_date}-${plan.meal_type}`, month: Number(plan.meal_date.slice(5, 7)), day: Number(plan.meal_date.slice(8, 10)), week: ['日', '一', '二', '三', '四', '五', '六'][new Date(`${plan.meal_date}T00:00:00`).getDay()], meal: plan.meal_type, dishes: (links.data || []).map((link) => ({ name: link.dishes?.name || '未命名菜品' })) });
+  }
+  $('#loginLabel').textContent = state.user;
   renderDishes();
   renderHistory();
 }
-function saveDishes() { saveCurrentUser(); }
 
 function renderHistory() {
   const list = $('#historyList');
@@ -81,14 +83,17 @@ function renderHistory() {
   list.innerHTML = state.history.length ? state.history.map((entry) => `<article class="history-entry"><div class="history-date"><strong>${entry.month}月${entry.day}日</strong><span>星期${entry.week}</span></div><div class="history-food"><b>${entry.meal}</b><span>${entry.dishes.map((dish) => dish.name).join('、')}</span></div></article>`).join('') : '<div class="history-empty"><span>◷</span><p>还没有点餐记录</p><small>确认一份明日食谱，这里就会留下第一笔。</small></div>';
 }
 
-function saveOrder() {
-  if (!state.user) return;
-  const todayKey = `${tomorrow.getFullYear()}-${month}-${day}-${state.meal}`;
-  state.history = state.history.filter((entry) => entry.key !== todayKey);
-  state.history.unshift({ key: todayKey, month, day, week, meal: state.meal, dishes: state.cart });
-  state.history = state.history.slice(0, 30);
-  saveCurrentUser();
-  renderHistory();
+async function saveOrder() {
+  if (!state.userId) return;
+  const mealDate = tomorrow.toISOString().slice(0, 10);
+  const planResult = await supabaseClient.from('meal_plans').upsert({ user_id: state.userId, meal_date: mealDate, meal_type: state.meal }, { onConflict: 'user_id,meal_date,meal_type' }).select('id').single();
+  if (planResult.error) throw planResult.error;
+  const removeResult = await supabaseClient.from('meal_plan_dishes').delete().eq('meal_plan_id', planResult.data.id);
+  if (removeResult.error) throw removeResult.error;
+  const links = state.cart.map((dish, index) => ({ meal_plan_id: planResult.data.id, dish_id: dish.id, sort_order: index }));
+  const insertResult = await supabaseClient.from('meal_plan_dishes').insert(links);
+  if (insertResult.error) throw insertResult.error;
+  await loadUserData(state.session);
 }
 
 function encodeShareData(data) { return btoa(unescape(encodeURIComponent(JSON.stringify(data)))); }
@@ -109,10 +114,23 @@ function importSharedData() {
   } catch (error) { window.history.replaceState({}, '', window.location.pathname); }
 }
 
-if (state.user && users[state.user]) loadUser(state.user);
 importSharedData();
 renderDishes();
 renderCart();
+
+async function initializeSupabase() {
+  if (!supabaseClient) return;
+  const sessionResult = await supabaseClient.auth.getSession();
+  if (sessionResult.data.session) await loadUserData(sessionResult.data.session);
+  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    if (session) await loadUserData(session);
+    else {
+      state.user = ''; state.userId = ''; state.session = null; state.dishes = defaultDishes; state.history = [];
+      $('#loginLabel').textContent = '登录'; renderDishes(); renderHistory();
+    }
+  });
+}
+initializeSupabase();
 document.querySelectorAll('.meal-option').forEach((item) => item.classList.toggle('active', item.dataset.meal === state.meal));
 $('#selectedMealLabel').textContent = state.meal;
 renderHistory();
@@ -136,15 +154,15 @@ $('.meal-switch').addEventListener('click', (event) => {
 $('#dishGrid').addEventListener('click', (event) => {
   const button = event.target.closest('[data-add]');
   if (!button) return;
-  const dish = state.dishes.find((item) => item.id === Number(button.dataset.add));
-  if (dish && !state.cart.some((item) => item.id === dish.id)) state.cart.push(dish);
+  const dish = state.dishes.find((item) => String(item.id) === button.dataset.add);
+  if (dish && !state.cart.some((item) => String(item.id) === String(dish.id))) state.cart.push(dish);
   renderCart();
 });
 
 $('#cartItems').addEventListener('click', (event) => {
   const button = event.target.closest('[data-remove]');
   if (!button) return;
-  state.cart = state.cart.filter((item) => item.id !== Number(button.dataset.remove));
+  state.cart = state.cart.filter((item) => String(item.id) !== button.dataset.remove);
   renderCart();
 });
 
@@ -165,6 +183,19 @@ document.querySelectorAll('[data-auth-mode]').forEach((button) => button.addEven
   $('#authMessage').textContent = '';
 }));
 
+function usernameEmail(username) {
+  const code = Array.from(username).map((character) => character.codePointAt(0).toString(16)).join('');
+  return `u-${code}@tomorrow-menu.app`;
+}
+
+function validUsername(username) {
+  return /^[A-Za-z\u4e00-\u9fff-]+$/.test(username);
+}
+
+function validPassword(password) {
+  return password.length >= 6 && password.length <= 20 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password);
+}
+
 $('#dishImage').addEventListener('change', (event) => {
   const file = event.target.files[0];
   if (!file) return;
@@ -173,31 +204,52 @@ $('#dishImage').addEventListener('change', (event) => {
   reader.readAsDataURL(file);
 });
 
-$('#uploadForm').addEventListener('submit', (event) => {
+$('#uploadForm').addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (!state.userId) { $('#authMessage').textContent = '请先登录。'; closeModal('uploadModal'); showModal('loginModal'); return; }
   const file = $('#dishImage').files[0];
-  const finish = (image) => {
-    state.dishes.unshift({ id: Date.now(), name: $('#dishName').value.trim(), category: $('#dishCategory').value, time: '自定义', image });
-    saveDishes(); renderDishes(); closeModal('uploadModal'); event.target.reset(); $('#uploadPreview').style.background = ''; $('#uploadPreview').textContent = '＋';
-  };
-  if (file) { const reader = new FileReader(); reader.onload = () => finish(reader.result); reader.readAsDataURL(file); } else finish('https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=700&q=85');
+  let image = 'https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=700&q=85';
+  try {
+    if (file) {
+      const path = `${state.userId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
+      const uploadResult = await supabaseClient.storage.from('dish-images').upload(path, file, { upsert: false });
+      if (uploadResult.error) throw uploadResult.error;
+      image = supabaseClient.storage.from('dish-images').getPublicUrl(path).data.publicUrl;
+    }
+    const dishResult = await supabaseClient.from('dishes').insert({ user_id: state.userId, name: $('#dishName').value.trim(), category: $('#dishCategory').value, cook_time: '自定义', image_url: image }).select().single();
+    if (dishResult.error) throw dishResult.error;
+    await loadUserData(state.session);
+    closeModal('uploadModal'); event.target.reset(); $('#uploadPreview').style.background = ''; $('#uploadPreview').textContent = '＋';
+  } catch (error) { $('#authMessage').textContent = `上传失败：${error.message}`; }
 });
 
-$('#loginForm').addEventListener('submit', (event) => {
+$('#loginForm').addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (!supabaseClient) { $('#authMessage').textContent = 'Supabase 配置还没有加载。'; return; }
   const username = $('#username').value.trim();
   const password = $('#password').value;
-  if (state.authMode === 'register') {
-    if (users[username]) { $('#authMessage').textContent = '这个用户名已经注册过了。'; return; }
-    users[username] = { password, dishes: legacyDishes || defaultDishes, history: [] };
-    saveUsers();
-  } else if (!users[username] || users[username].password !== password) {
-    $('#authMessage').textContent = '用户名或密码不正确。';
-    return;
-  }
-  loadUser(username);
-  closeModal('loginModal');
-  event.target.reset();
+  if (!validUsername(username)) { $('#authMessage').textContent = '用户名只能包含中文、英文和短横线。'; return; }
+  if (!validPassword(password)) { $('#authMessage').textContent = '密码需为 6-20 位，并同时包含大写字母、小写字母和数字。'; return; }
+  const email = usernameEmail(username);
+  $('#authMessage').textContent = '正在处理…';
+  try {
+    if (state.authMode === 'register') {
+      const existing = await supabaseClient.from('profiles').select('id').eq('username', username).maybeSingle();
+      if (existing.error) throw existing.error;
+      if (existing.data) { $('#authMessage').textContent = '这个用户名已经存在，请直接登录。'; return; }
+    }
+    const result = state.authMode === 'register'
+      ? await supabaseClient.auth.signUp({ email, password })
+      : await supabaseClient.auth.signInWithPassword({ email, password });
+    if (result.error) throw result.error;
+    if (state.authMode === 'register' && result.data.user) {
+      const profileResult = await supabaseClient.from('profiles').insert({ id: result.data.user.id, username });
+      if (profileResult.error) throw profileResult.error;
+    }
+    if (!result.data.session) { $('#authMessage').textContent = '注册成功，请先查收邮箱并完成验证。'; return; }
+    await loadUserData(result.data.session);
+    closeModal('loginModal'); event.target.reset(); $('#authMessage').textContent = '';
+  } catch (error) { $('#authMessage').textContent = `操作失败：${error.message}`; }
 });
 
 $('#copyShareButton').addEventListener('click', async () => {
@@ -240,9 +292,8 @@ function drawRecipe() {
   $('#downloadRecipe').href = canvas.toDataURL('image/png');
 }
 
-$('#confirmButton').addEventListener('click', () => {
-  if (!state.user) { showModal('loginModal'); return; }
-  saveOrder();
-  drawRecipe();
-  showModal('recipeModal');
+$('#confirmButton').addEventListener('click', async () => {
+  if (!state.userId) { showModal('loginModal'); return; }
+  try { await saveOrder(); drawRecipe(); showModal('recipeModal'); }
+  catch (error) { $('#authMessage').textContent = `保存失败：${error.message}`; showModal('loginModal'); }
 });
