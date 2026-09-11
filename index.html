@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>明天吃啥好 | 明日食谱</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="明天吃啥好首页"><span class="brand-mark">好</span><span>明天吃啥好</span></a>
+      <div class="top-actions">
+        <button class="ghost-button" id="loginButton"><span class="button-icon">◉</span><span id="loginLabel">登录</span></button>
+        <button class="ghost-button" id="historyButton"><span class="button-icon">◷</span><span>近一个月</span></button>
+        <button class="ghost-button" id="shareButton"><span class="button-icon">↗</span><span>分享</span></button>
+        <button class="cart-button" id="cartButton" aria-label="打开购物车"><span class="cart-icon">▣</span><span>购物车</span><b id="cartCount">0</b></button>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">明天的菜单</p>
+          <h1>明天，<em>吃点好的。</em></h1>
+          <p class="hero-description">把你会做的菜放上来，让家里人先选一轮。今晚决定好，明天少一点纠结，多一点期待。</p>
+          <div class="meal-switch" role="group" aria-label="选择用餐时段">
+            <button class="meal-option active" data-meal="午饭"><span>☼</span> 午饭</button>
+            <button class="meal-option" data-meal="晚饭"><span>☾</span> 晚饭</button>
+          </div>
+        </div>
+        <div class="date-card"><span class="date-kicker">明天是</span><strong id="tomorrowDate">--月--日</strong><span class="date-week" id="tomorrowWeek">星期-</span><span class="sun-stamp">明日<br>见</span></div>
+      </section>
+
+      <section class="content-grid">
+          <div class="menu-column">
+          <div class="section-heading"><div><p class="eyebrow">挑一道喜欢的</p><h2>今天想做什么？</h2></div><button class="outline-button" id="uploadButton"><span>＋</span> 上传我的菜</button></div>
+          <div class="category-tabs" role="tablist"><button class="category active" data-category="全部">全部 <span>6</span></button><button class="category" data-category="家常菜">家常菜</button><button class="category" data-category="快手菜">快手菜</button><button class="category" data-category="汤羹">汤羹</button></div>
+          <div class="dish-grid" id="dishGrid"></div>
+        </div>
+        <aside class="order-panel" id="orderPanel">
+          <div class="panel-heading"><div><p class="eyebrow">明天这一顿</p><h2>今晚定下来</h2></div><span class="step-badge">01</span></div>
+          <div class="selected-meal"><span id="selectedMealLabel">午饭</span><span id="selectedDateLabel">明天</span></div>
+          <div class="cart-items" id="cartItems"><div class="empty-cart"><span>○</span><p>还没有选择菜品</p><small>从左边挑一道，放进明日计划</small></div></div>
+          <div class="panel-bottom"><div class="total-row"><span>已选菜品</span><strong id="totalCount">0 道</strong></div><button class="primary-button" id="confirmButton" disabled>确认并生成食谱 <span>→</span></button><p class="tiny-note">确认后会生成一张可保存的明日食谱图</p></div>
+        </aside>
+      </section>
+    </main>
+
+    <footer><span>慢慢选，好好吃饭。</span><span>Made for tomorrow · 2026</span></footer>
+  </div>
+
+  <div class="modal-backdrop" id="uploadModal" hidden><div class="modal upload-modal"><button class="modal-close" data-close="uploadModal">×</button><p class="eyebrow">ADD A DISH</p><h2>把拿手菜放上来</h2><p class="modal-intro">让下一顿饭从你的菜单开始。</p><form id="uploadForm"><label class="image-drop" for="dishImage"><input id="dishImage" type="file" accept="image/*"><span class="upload-preview" id="uploadPreview">＋</span><span>点击上传菜品图片</span><small>支持 JPG、PNG</small></label><label>菜的名称<input id="dishName" type="text" placeholder="比如：番茄炒蛋" required></label><label>菜品分类<select id="dishCategory"><option>家常菜</option><option>快手菜</option><option>汤羹</option></select></label><button class="primary-button" type="submit">加入我的菜单 <span>→</span></button></form></div></div>
+  <div class="modal-backdrop" id="loginModal" hidden><div class="modal login-modal"><button class="modal-close" data-close="loginModal">×</button><p class="eyebrow">你的专属厨房</p><h2 id="authTitle">登录，一起选</h2><p class="modal-intro" id="authIntro">登录后，你上传的菜和明日计划会留在这里。</p><div class="auth-tabs"><button class="auth-tab active" data-auth-mode="login">登录</button><button class="auth-tab" data-auth-mode="register">注册新账号</button></div><form id="loginForm"><label>用户名<input id="username" type="text" placeholder="比如：小明" required></label><label>密码<input id="password" type="password" placeholder="至少 4 位" minlength="4" required></label><button class="primary-button" id="authSubmit" type="submit">进入厨房 <span>→</span></button><p class="form-message" id="authMessage" aria-live="polite"></p></form></div></div>
+  <div class="modal-backdrop" id="historyModal" hidden><div class="modal history-modal"><button class="modal-close" data-close="historyModal">×</button><p class="eyebrow">近 30 天</p><h2>我们吃过什么？</h2><p class="modal-intro" id="historyIntro">登录后，这里会成为你的家庭饭桌日记。</p><div class="history-list" id="historyList"></div></div></div>
+  <div class="modal-backdrop" id="shareModal" hidden><div class="modal share-modal"><button class="modal-close" data-close="shareModal">×</button><p class="eyebrow">发给朋友</p><h2>一起决定明天吃什么</h2><p class="modal-intro">复制这个链接，朋友打开后就能看到你当前的菜单和明日计划。</p><label>分享链接<input id="shareUrl" type="text" readonly></label><button class="primary-button" id="copyShareButton" type="button">复制分享链接 <span>↗</span></button><p class="form-message" id="shareMessage" aria-live="polite"></p></div></div>
+  <div class="modal-backdrop" id="recipeModal" hidden><div class="modal recipe-modal"><button class="modal-close" data-close="recipeModal">×</button><p class="eyebrow">RECIPE READY</p><h2>明日食谱做好啦</h2><canvas id="recipeCanvas" width="1000" height="1250"></canvas><a class="download-button" id="downloadRecipe" download="明日食谱.png">↓ 保存食谱图片</a></div></div>
+  <script src="app.js"></script>
+</body>
+</html>
