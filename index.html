@@ -58,6 +58,8 @@
   <div class="modal-backdrop" id="historyModal" hidden><div class="modal history-modal"><button class="modal-close" data-close="historyModal">×</button><p class="eyebrow">近 30 天</p><h2>我们吃过什么？</h2><p class="modal-intro" id="historyIntro">登录后，这里会成为你的家庭饭桌日记。</p><div class="history-list" id="historyList"></div></div></div>
   <div class="modal-backdrop" id="shareModal" hidden><div class="modal share-modal"><button class="modal-close" data-close="shareModal">×</button><p class="eyebrow">发给朋友</p><h2>一起决定明天吃什么</h2><p class="modal-intro">复制这个链接，朋友打开后就能看到你当前的菜单和明日计划。</p><label>分享链接<input id="shareUrl" type="text" readonly></label><button class="primary-button" id="copyShareButton" type="button">复制分享链接 <span>↗</span></button><p class="form-message" id="shareMessage" aria-live="polite"></p></div></div>
   <div class="modal-backdrop" id="recipeModal" hidden><div class="modal recipe-modal"><button class="modal-close" data-close="recipeModal">×</button><p class="eyebrow">RECIPE READY</p><h2>明日食谱做好啦</h2><canvas id="recipeCanvas" width="1000" height="1250"></canvas><a class="download-button" id="downloadRecipe" download="明日食谱.png">↓ 保存食谱图片</a></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
