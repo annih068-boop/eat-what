@@ -116,23 +116,36 @@ async function saveOrder() {
   await loadUserData(state.session);
 }
 
-function encodeShareData(data) { return btoa(unescape(encodeURIComponent(JSON.stringify(data)))); }
-function decodeShareData(value) { return JSON.parse(decodeURIComponent(escape(atob(value)))); }
-function buildShareUrl() {
+function createShareToken() {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(36).padStart(2, '0')).join('').slice(0, 10);
+}
+async function buildShareUrl() {
+  if (!state.userId) throw new Error('请先登录后再分享');
+  const token = createShareToken();
   const payload = { dishes: state.dishes, cart: state.cart, meal: state.meal, chefName: state.chefName };
-  return `${window.location.href.split('#')[0]}#share=${encodeShareData(payload)}`;
+  const result = await supabaseClient.from('share_links').insert({ token, owner_id: state.userId, payload }).select('token').single();
+  if (result.error) throw result.error;
+  return `${window.location.href.split('#')[0]}#s=${result.data.token}`;
 }
 
-function importSharedData() {
-  const value = new URLSearchParams(window.location.hash.slice(1)).get('share');
-  if (!value) return;
+async function importSharedData() {
+  const token = new URLSearchParams(window.location.hash.slice(1)).get('s');
+  if (!token || !supabaseClient) return;
   try {
-    const shared = decodeShareData(value);
+    const result = await supabaseClient.from('share_links').select('payload').eq('token', token).gt('expires_at', new Date().toISOString()).maybeSingle();
+    if (result.error || !result.data) return;
+    const shared = result.data.payload;
     if (Array.isArray(shared.dishes)) state.sharedDishes = shared.dishes.map((dish) => ({ ...dish, id: `shared-${dish.id}`, source: 'shared' }));
     if (Array.isArray(shared.cart)) state.cart = shared.cart.map((dish) => ({ ...dish, id: `shared-${dish.id}`, source: 'shared' }));
     if (shared.meal) state.meal = shared.meal;
     if (shared.chefName) state.chefName = shared.chefName;
-  } catch (error) { window.history.replaceState({}, '', window.location.pathname); }
+    renderDishes();
+    renderCart();
+    document.querySelectorAll('.meal-option').forEach((item) => item.classList.toggle('active', item.dataset.meal === state.meal));
+    $('#selectedMealLabel').textContent = state.meal;
+  } catch (error) { console.error('分享链接读取失败', error); }
 }
 
 importSharedData();
@@ -216,7 +229,10 @@ $('#settingsButton').addEventListener('click', () => {
   showModal('settingsModal');
 });
 $('#historyButton').addEventListener('click', () => { renderHistory(); showModal('historyModal'); });
-$('#shareButton').addEventListener('click', () => { $('#shareUrl').value = buildShareUrl(); $('#shareMessage').textContent = '这个链接会带上当前菜单和明日计划。'; showModal('shareModal'); });
+$('#shareButton').addEventListener('click', async () => {
+  try { $('#shareUrl').value = await buildShareUrl(); $('#shareMessage').textContent = '短链接已生成，有效期 30 天。'; showModal('shareModal'); }
+  catch (error) { $('#shareMessage').textContent = `生成失败：${error.message}`; showModal('shareModal'); }
+});
 $('#cartButton').addEventListener('click', () => $('#orderPanel').scrollIntoView({ behavior: 'smooth', block: 'center' }));
 document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.close)));
 document.querySelectorAll('.modal-backdrop').forEach((backdrop) => backdrop.addEventListener('click', (event) => { if (event.target === backdrop) closeModal(backdrop.id); }));

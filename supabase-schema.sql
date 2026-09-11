@@ -38,10 +38,19 @@ create table if not exists public.meal_plan_dishes (
   primary key (meal_plan_id, dish_id)
 );
 
+create table if not exists public.share_links (
+  token text primary key,
+  owner_id uuid references auth.users(id) on delete cascade,
+  payload jsonb not null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '30 days')
+);
+
 alter table public.profiles enable row level security;
 alter table public.dishes enable row level security;
 alter table public.meal_plans enable row level security;
 alter table public.meal_plan_dishes enable row level security;
+alter table public.share_links enable row level security;
 
 create policy "profiles are readable by owner" on public.profiles for select using (auth.uid() = id);
 create policy "usernames can be checked during registration" on public.profiles for select using (true);
@@ -67,6 +76,11 @@ create policy "users can add their plan dishes" on public.meal_plan_dishes for i
 create policy "users can remove their plan dishes" on public.meal_plan_dishes for delete using (
   exists (select 1 from public.meal_plans p where p.id = meal_plan_id and p.user_id = auth.uid())
 );
+
+create policy "anyone can read active share links" on public.share_links
+for select using (expires_at > now());
+create policy "users can create their share links" on public.share_links
+for insert to authenticated with check (auth.uid() = owner_id);
 
 insert into storage.buckets (id, name, public)
 values ('dish-images', 'dish-images', true)
