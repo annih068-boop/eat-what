@@ -185,7 +185,7 @@ document.querySelectorAll('[data-auth-mode]').forEach((button) => button.addEven
 
 function usernameEmail(username) {
   const code = Array.from(username).map((character) => character.codePointAt(0).toString(16)).join('');
-  return `u-${code}@tomorrow-menu.app`;
+  return `u-${code}@eat-what-mh26.onrender.com`;
 }
 
 function validUsername(username) {
@@ -249,7 +249,10 @@ $('#loginForm').addEventListener('submit', async (event) => {
     if (!result.data.session) { $('#authMessage').textContent = '注册成功，请先查收邮箱并完成验证。'; return; }
     await loadUserData(result.data.session);
     closeModal('loginModal'); event.target.reset(); $('#authMessage').textContent = '';
-  } catch (error) { $('#authMessage').textContent = `操作失败：${error.message}`; }
+  } catch (error) {
+    const message = error.message.includes('Email address') ? '账号服务仍需要一个内部邮箱标识，请确认已重新部署最新代码。' : error.message;
+    $('#authMessage').textContent = `操作失败：${message}`;
+  }
 });
 
 $('#copyShareButton').addEventListener('click', async () => {
